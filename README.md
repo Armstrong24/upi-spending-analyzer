@@ -3,6 +3,11 @@
 **FLB (Financial Literacy & Banking) group project** · Unit 5: Current Financial Trends and Fintech
 SY B.Tech AI & DS, Vishwakarma University, Pune
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://upi-spending-analyzer-4frr9h7ggyhzpfegfarlup.streamlit.app/)
+
+**Live demo:** https://upi-spending-analyzer-4frr9h7ggyhzpfegfarlup.streamlit.app/  
+(Hosted free on Streamlit Community Cloud. If it says the app is asleep, click *Yes, get this app back up!* and wait about a minute.)
+
 Upload a UPI statement (PhonePe / Google Pay / Paytm / bank, CSV or PDF). The app:
 
 1. **Categorises every payment with machine learning** (TF-IDF + Logistic Regression), with keyword rules as a fallback.
