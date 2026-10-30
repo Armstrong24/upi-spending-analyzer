@@ -16,6 +16,8 @@ SY B.Tech AI & DS, Vishwakarma University, Pune
 4. If Windows SmartScreen shows "Windows protected your PC", click **More info → Run anyway** (the app is free and not code-signed).
 
 It opens in its own window, runs fully offline, and the folder includes sample CSV and PDF statements to try **Open UPI statement**.
+![Desktop app](docs/screenshots/desktop/tab_0.png)
+
 Developers can run it from source with `run_desktop.bat` or `python desktop_app.py` (needs `pip install -r requirements-desktop.txt`).
 
 Upload a UPI statement (PhonePe / Google Pay / Paytm / bank, CSV or PDF). The app:

@@ -58,7 +58,11 @@ QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
 
 
 def rs(x):
-    return f"₹{x:,.0f}"
+    return f"-₹{abs(x):,.0f}" if x < 0 else f"₹{x:,.0f}"
+
+
+def rs_k(x, _=None):
+    return f"-₹{abs(x)/1000:.0f}k" if x < 0 else f"₹{x/1000:.0f}k"
 
 
 # ---------------------------------------------------------------- helpers
@@ -253,8 +257,8 @@ class MainWindow(QMainWindow):
             current = self.tabs.currentIndex()
             self.tabs.clear()
             for name, fn in [("📊 Overview", self.tab_overview), ("🧾 Transactions", self.tab_transactions),
-                             ("🤖 AI Model", self.tab_model), ("🚨 Anomalies & Fraud", self.tab_anomalies),
-                             ("🔁 Subscriptions", self.tab_recurring), ("🎯 Budget 50/30/20 & Tips", self.tab_budget),
+                             ("🤖 AI Model", self.tab_model), ("🚨 Anomalies && Fraud", self.tab_anomalies),
+                             ("🔁 Subscriptions", self.tab_recurring), ("🎯 Budget 50/30/20 && Tips", self.tab_budget),
                              ("📚 FLB Concepts", self.tab_flb)]:
                 self.tabs.addTab(fn(), name)
             self.tabs.setCurrentIndex(max(current, 0))
@@ -285,16 +289,16 @@ class MainWindow(QMainWindow):
         for i, col in enumerate(m.columns):
             ax.bar(labels, m[col].values, bottom=bottom, label=col, color=PALETTE[i % len(PALETTE)], width=0.55)
             bottom += m[col].values
-        style_ax(ax, "Monthly spending by category"); ax.yaxis.set_major_formatter(lambda x, _: f"₹{x/1000:.0f}k")
+        style_ax(ax, "Monthly spending by category"); ax.yaxis.set_major_formatter(rs_k)
         ax.legend(fontsize=7, frameon=False, bbox_to_anchor=(1.0, 1), loc="upper left"); fig.tight_layout()
         g.addWidget(cv, 0, 0)
         # donut
         ct = insights.category_totals(df)
-        fig2, cv2 = chart(5, 3.6); ax2 = fig2.add_subplot(111)
+        fig2, cv2 = chart(5, 4.0); ax2 = fig2.add_subplot(111)
         ax2.pie(ct.values, labels=None, colors=PALETTE[:len(ct)], startangle=90, counterclock=False,
                 wedgeprops=dict(width=0.42, edgecolor="white"), autopct=lambda p: f"{p:.0f}%" if p > 5 else "",
                 pctdistance=0.79, textprops=dict(fontsize=8, color="white", fontweight="bold"))
-        ax2.legend(ct.index, fontsize=7, frameon=False, bbox_to_anchor=(1.0, 0.5), loc="center left")
+        ax2.legend(ct.index, fontsize=7, frameon=False, bbox_to_anchor=(0.5, -0.02), loc="upper center", ncol=3)
         ax2.set_title("Where the money went", loc="left", fontsize=11, fontweight="bold"); fig2.tight_layout()
         g.addWidget(cv2, 0, 1)
         # top merchants
@@ -307,7 +311,7 @@ class MainWindow(QMainWindow):
         fig3, cv3 = chart(6, 3.2); ax3 = fig3.add_subplot(111)
         ax3.plot(daily.index, daily.values, marker="o", color=ACCENT, lw=2)
         ax3.fill_between(daily.index, daily.values, alpha=0.08, color=ACCENT)
-        style_ax(ax3, "Weekly spending trend"); ax3.yaxis.set_major_formatter(lambda x, _: f"₹{x/1000:.0f}k")
+        style_ax(ax3, "Weekly spending trend"); ax3.yaxis.set_major_formatter(rs_k)
         fig3.autofmt_xdate(); fig3.tight_layout()
         g.addWidget(cv3, 1, 1)
         g.setColumnStretch(0, 3); g.setColumnStretch(1, 2)
@@ -359,6 +363,7 @@ class MainWindow(QMainWindow):
         ax.set_title("Confusion matrix (test set)", loc="left", fontsize=11, fontweight="bold"); fig.tight_layout()
         mid.addWidget(cv, 1)
         rep = pd.DataFrame(md.report).T.drop(["accuracy"], errors="ignore")[["precision", "recall", "f1-score", "support"]].round(2)
+        rep["support"] = rep["support"].astype(int)
         rep.insert(0, "category", rep.index)
         rb = QWidget(); rl = QVBoxLayout(rb); rl.addWidget(heading("Per-category precision / recall")); rl.addWidget(table(rep))
         mid.addWidget(rb, 1)
@@ -429,11 +434,12 @@ class MainWindow(QMainWindow):
         ax.bar(x - 0.2, b["target"], 0.4, label="target", color="#c9b6e4")
         ax.bar(x + 0.2, b["actual"], 0.4, label="actual", color=ACCENT)
         ax.set_xticks(x); ax.set_xticklabels(b["bucket"]); ax.axhline(0, color="#999", lw=0.8)
-        ax.yaxis.set_major_formatter(lambda x, _: f"₹{x/1000:.0f}k")
+        ax.yaxis.set_major_formatter(rs_k)
         style_ax(ax, "Target vs your average month"); ax.legend(fontsize=8, frameon=False); fig.tight_layout()
         row.addWidget(cv, 3)
         right = QWidget(); rl = QVBoxLayout(right)
-        rl.addWidget(table(b, money_cols=["target", "actual"]))
+        bd = b.copy(); bd["actual_pct"] = bd["actual_pct"].map(lambda x: f"{x:.1f}%")
+        rl.addWidget(table(bd, money_cols=["target", "actual"]))
         c = QLabel("Needs: groceries, travel, bills, recharge, education, health.\n"
                    "Wants: eating out, shopping, entertainment, transfers to friends.")
         c.setWordWrap(True); c.setStyleSheet("color:#6b6780; font-size:9pt;"); rl.addWidget(c)
