@@ -97,3 +97,10 @@ def test_budget_adds_up(analysed):
     b = insights.budget_503020(df, 20000)
     assert b["target"].sum() == 20000
     assert b["actual"].sum() == pytest.approx(20000, abs=2)
+
+
+def test_future_scope_roadmap_complete():
+    from analyzer import future_scope
+    assert len(future_scope.LIMITATIONS) >= 4
+    assert all(len(r) == 5 and all(r) for r in future_scope.ROADMAP)
+    assert {r[0] for r in future_scope.ROADMAP} >= {"Phase 1: Next 3 months", "Phase 2: 6-12 months", "Phase 3: Long term"}

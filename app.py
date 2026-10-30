@@ -6,7 +6,7 @@ import plotly.express as px
 import streamlit as st
 
 import analyzer as A
-from analyzer import insights, parser, categorizer, llm
+from analyzer import insights, parser, categorizer, llm, future_scope
 
 st.set_page_config(page_title="UPI Spending Analyzer", page_icon="💸", layout="wide")
 
@@ -75,7 +75,7 @@ c5.metric("Unusual payments", len(flagged), delta=f"{(flagged['risk_level'] == '
           delta_color="inverse")
 
 tabs = st.tabs(["📊 Overview", "🧾 Transactions", "🤖 AI Model", "🚨 Anomalies & Fraud",
-                "🔁 Subscriptions", "🎯 Budget 50/30/20 & Tips", "📚 FLB Concepts"])
+                "🔁 Subscriptions", "🎯 Budget 50/30/20 & Tips", "📚 FLB Concepts", "🚀 Future Scope"])
 
 # ------------------------------------------------------------------ overview
 with tabs[0]:
@@ -208,3 +208,16 @@ with tabs[6]:
         ("Recurring payments", "Subscription economy, UPI AutoPay / e-mandates", "Unit 5"),
         ("Anomaly & scam detection", "Banking fraud, cyber safety, RBI customer protection", "Unit 3 / fraud awareness"),
     ], columns=["Feature", "FLB concept", "Syllabus link"]))
+
+# ------------------------------------------------------------------ future scope
+with tabs[7]:
+    st.subheader("Future scope: where this project can go next")
+    st.info(future_scope.IMPACT)
+    st.markdown("**Current limitations (what we would fix)**")
+    st.warning("\n".join(f"- **{a}:** {b}" for a, b in future_scope.LIMITATIONS))
+    st.markdown("**Roadmap**")
+    rm = pd.DataFrame(future_scope.ROADMAP, columns=["Phase", "Feature", "What it adds", "How (technology)", "FLB concept"])
+    for phase, grp in rm.groupby("Phase", sort=False):
+        with st.expander(phase, expanded=True):
+            st.table(grp.drop(columns="Phase").set_index("Feature"))
+

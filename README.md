@@ -16,7 +16,14 @@ SY B.Tech AI & DS, Vishwakarma University, Pune
 4. If Windows SmartScreen shows "Windows protected your PC", click **More info → Run anyway** (the app is free and not code-signed).
 
 It opens in its own window, runs fully offline, and the folder includes sample CSV and PDF statements to try **Open UPI statement**.
-![Desktop app](docs/screenshots/desktop/tab_0.png)
+
+**Light, Dark or System theme:** pick it from **Appearance** at the top of the sidebar. *System* follows your Windows setting (Settings → Personalization → Colors) and switches live if you change it; your choice is remembered next time.
+
+| Light | Dark |
+|---|---|
+| ![Desktop app, light](docs/screenshots/desktop/tab_0.png) | ![Desktop app, dark](docs/screenshots/desktop/dark_tab_0.png) |
+
+The web version has the same choice under **⋮ → Settings → Choose app theme** (Use system setting / Light / Dark).
 
 Developers can run it from source with `run_desktop.bat` or `python desktop_app.py` (needs `pip install -r requirements-desktop.txt`).
 
@@ -74,8 +81,8 @@ python -m analyzer.data_generator
 
 ```
 upi-spending-analyzer/
-├── app.py                    # Streamlit web UI (7 tabs)
-├── desktop_app.py            # Windows desktop UI (PySide6 / Qt, same 7 tabs, same engine)
+├── app.py                    # Streamlit web UI (8 tabs)
+├── desktop_app.py            # Windows desktop UI (PySide6 / Qt, same 8 tabs, Light/Dark/System theme)
 ├── run_desktop.bat           # run the desktop app from source on Windows
 ├── requirements-desktop.txt
 ├── .github/workflows/build-windows.yml  # builds the .exe on GitHub and publishes it
@@ -86,7 +93,8 @@ upi-spending-analyzer/
 │   ├── categorizer.py        # ML model: TF-IDF + Logistic Regression + rule fallback
 │   ├── anomaly.py            # duplicate, z-score, late-night, scam words, Isolation Forest
 │   ├── insights.py           # merchants, charts data, recurring, 50/30/20, tips
-│   └── llm.py                # optional LLM summary (only with an API key)
+│   ├── llm.py                # optional LLM summary (only with an API key)
+│   └── future_scope.py       # limitations + future-scope roadmap shown in the app
 ├── data/
 │   ├── training_data.csv     # 3,000 labelled UPI descriptions
 │   ├── sample_upi_statement.csv
@@ -163,7 +171,44 @@ In the sample, it catches all three planted problems: a ₹18,999 payment at 2:1
 
 ---
 
-## 5. How to explain it in class
+## 5. Future scope
+
+The app works today as a private, offline student budgeting tool. The **🚀 Future Scope** tab in both apps shows this roadmap; the text lives in `analyzer/future_scope.py`.
+
+**Vision:** grow from a student budgeting tool into a privacy-first personal finance assistant that helps first-time UPI users in India spend wisely, save regularly and avoid fraud.
+
+### Current limitations (and why they lead to the roadmap)
+
+| Limitation | What it means today |
+|---|---|
+| Synthetic training data | 99.8% on familiar merchants, about 62% on shops the model has never seen |
+| Manual statement download | User exports a CSV/PDF from PhonePe, GPay, Paytm or the bank |
+| Fixed PDF layouts | PhonePe-style PDFs are read; scanned PDFs are not |
+| Hand-tuned fraud thresholds | z-score 2.5, late-night hours and scam words were chosen by us; no labelled real fraud data |
+| Past data only | Explains where money went, but does not predict or alert in real time |
+
+### Roadmap
+
+| Phase | Feature | What it adds | How (technology) | FLB concept |
+|---|---|---|---|---|
+| Phase 1: Next 3 months | Learn from user corrections | User fixes a wrong category; the model retrains and remembers it for that merchant. | Active learning, per-user merchant memory | Personal financial planning |
+| Phase 1: Next 3 months | More statement formats + OCR | Read GPay, Paytm, SBI, HDFC, ICICI PDFs and scanned or photographed statements. | pdfplumber templates, Tesseract OCR | Digital payments (Unit 5) |
+| Phase 1: Next 3 months | Budget goals and alerts | Set a goal (e.g. save ₹10,000 for a laptop) and get warned when a category crosses its limit. | Rule engine, desktop notifications | Budgeting, savings habits |
+| Phase 1: Next 3 months | Hindi and Marathi support | Understand regional merchant names and show the app in Indian languages. | Multilingual tokenisation, Qt translations | Financial inclusion |
+| Phase 2: 6-12 months | Automatic statements via Account Aggregator | Fetch transactions directly from the bank with the user's consent, no manual download. | RBI Account Aggregator framework (Sahamati), FIU licence | Fintech, Open banking (Unit 5) |
+| Phase 2: 6-12 months | Spending forecast | Predict next month's spend per category and warn early about overspending. | Time series: ARIMA / Prophet / LSTM | Financial planning, cash-flow management |
+| Phase 2: 6-12 months | Smarter categoriser | Lift unseen-merchant accuracy from 62% using language models trained on real labelled data. | IndicBERT / DistilBERT fine-tuning | AI in fintech (Unit 5) |
+| Phase 2: 6-12 months | Private offline AI coach | Personalised advice from a small LLM running on the laptop, no API key or internet. | Local LLM (e.g. Phi / Llama via Ollama) | Fintech, data privacy |
+| Phase 3: Long term | Real-time fraud shield | Score each payment as it happens, check payee VPAs against reported scam lists, explain why. | Graph analysis of payee networks, SHAP explanations, 1930 helpline data | Banking frauds (Unit 3) |
+| Phase 3: Long term | Android app with SMS tracking | Track spending automatically from bank SMS alerts (with permission) on the phone. | Kotlin / Flutter, on-device ML (TF Lite) | Digital payments, mobile banking |
+| Phase 3: Long term | Invest the savings | Turn monthly surplus into goal-based SIP / RD suggestions and credit-score (CIBIL) health tips. | SIP/RD calculators, compounding projections | Savings & investment, credit |
+| Phase 3: Long term | Security and compliance | Encrypted local storage, consent logs, code-signed installer with auto-update. | AES encryption, DPDP Act 2023 compliance, code signing | RBI customer protection, data privacy |
+
+**In one line for the viva:** short term, make it learn from the user and read more formats; medium term, fetch data automatically through the RBI Account Aggregator framework and predict spending; long term, a real-time fraud shield and a mobile app, built to DPDP Act 2023 privacy rules.
+
+---
+
+## 6. How to explain it in class
 
 ### Suggested split for 4 members (about 1 minute each)
 
@@ -172,7 +217,7 @@ In the sample, it catches all three planted problems: a ₹18,999 payment at 2:1
 | **1** | Problem, idea, FLB link, data & parsing | Header + KPIs, upload box, *FLB Concepts* tab |
 | **2** | ML categoriser | *AI Model* tab: accuracy, confusion matrix, **type a description live** |
 | **3** | Fraud / anomaly detection | *Anomalies & Fraud* tab: the 2 AM payment, scam payee, duplicate |
-| **4** | Budgeting, subscriptions, tips, conclusion | *Subscriptions* + *Budget 50/30/20 & Tips* tabs |
+| **4** | Budgeting, subscriptions, tips, future scope | *Subscriptions* + *Budget 50/30/20 & Tips* + *Future Scope* tabs |
 
 ### 3-4 minute talking script
 
@@ -186,7 +231,7 @@ In the sample, it catches all three planted problems: a ₹18,999 payment at 2:1
 "Unit 3 talks about banking frauds, so we added anomaly detection. We use four simple checks and one ML model. One, **duplicate payments**: same payee and amount within 10 minutes. Two, the **z-score**: how many standard deviations a payment is above normal. Three, **high-value payments late at night**. Four, **scam words** in the payee, like 'KYC' or 'refund'. And an **Isolation Forest**, an unsupervised model that isolates odd combinations of amount and time. Look: a ₹18,999 payment at 2:13 AM is marked High risk, the ₹4,999 to 'kyc-update-help' is a classic KYC scam, and here Zomato was paid twice in one minute. We also show RBI's advice: you never need your PIN to *receive* money, and fraud can be reported on 1930."
 
 **Member 4 (budgeting & conclusion, ~60 s)**
-"Finally, financial planning. The app finds **recurring payments**: Netflix, Spotify, Jio every 28 days, Wi-Fi, gym. That's money committed every month before you spend anything. Then we apply the **50/30/20 rule**: 50% needs, 30% wants, 20% savings. On ₹23,000 income, this student spends 62% on wants and saves nothing; but without the two high-risk payments, they would be saving. The app gives personal tips: cut food delivery, watch small 'latte-factor' payments, and invest the surplus through an RD or SIP on the day money comes in. In future we could connect to the **RBI Account Aggregator** framework to fetch statements automatically. Thank you, we're happy to take questions."
+"Finally, financial planning. The app finds **recurring payments**: Netflix, Spotify, Jio every 28 days, Wi-Fi, gym. That's money committed every month before you spend anything. Then we apply the **50/30/20 rule**: 50% needs, 30% wants, 20% savings. On ₹23,000 income, this student spends 62% on wants and saves nothing; but without the two high-risk payments, they would be saving. The app gives personal tips: cut food delivery, watch small 'latte-factor' payments, and invest the surplus through an RD or SIP on the day money comes in. Looking ahead, our **Future Scope** tab shows the roadmap: the app will learn from user corrections, fetch statements automatically and with consent through the **RBI Account Aggregator** framework, forecast next month's spending, and grow into a real-time fraud shield and mobile app, all while keeping data private under the DPDP Act. Thank you, we're happy to take questions."
 
 ### Live demo checklist
 - Start the app *before* your turn: `streamlit run app.py`, keep the tab open.
@@ -237,13 +282,16 @@ Unified Payments Interface, launched in 2016 by NPCI (National Payments Corporat
 CSV exports with common column names work. PDF layouts differ between apps and banks; ours reads the PhonePe-style line format. Adding a new format means adding one pattern in `parser.py`.
 
 **Q14. Limitations and future scope?**
-Synthetic training data, a fixed set of 10 categories, and PDF formats vary. Future: train on real labelled data, let users correct categories (active learning), fetch statements through the RBI Account Aggregator framework, monthly budget alerts, and a mobile app.
+Limitations: synthetic training data (62% on unseen merchants), manual statement download, fixed PDF layouts and hand-tuned fraud thresholds. Future scope in three phases (see the 🚀 Future Scope tab): (1) learn from user corrections, OCR and more bank formats, budget goals and alerts, Hindi/Marathi; (2) automatic, consent-based data through the RBI Account Aggregator framework, spending forecasts with time-series models, an IndicBERT categoriser and an offline LLM coach; (3) a real-time fraud shield using payee-network graphs, an Android app, SIP/RD savings nudges, and encryption and DPDP Act 2023 compliance.
+
+**Q14b. What is the Account Aggregator framework?**
+An RBI-regulated system (launched 2021) where licensed Account Aggregators move your financial data from banks to an app only after you give digital consent, for a fixed purpose and time. It would let our app fetch transactions automatically without the user downloading statements or sharing passwords.
 
 **Q15. Which libraries did you use?**
 Python, Streamlit (UI), pandas (data), scikit-learn (TF-IDF, Logistic Regression, Isolation Forest), Plotly (charts), pdfplumber (PDF reading), fpdf2 (making the sample PDF), pytest (tests). The desktop version uses PySide6 (Qt) for the window and Matplotlib for charts, packaged into a Windows .exe with PyInstaller.
 
 **Q16. How did you make it a desktop app, and why?**
-The AI engine (`analyzer/`) has no UI code, so we only rewrote the screen layer: `desktop_app.py` builds the same 7 tabs with PySide6 (Qt), the toolkit behind many real desktop apps. PyInstaller bundles Python, the libraries, the model's training data and the app into one folder with an `.exe`, built automatically on GitHub Actions. Why desktop: bank statements are private, so the app runs fully on the user's own laptop with no upload and no internet.
+The AI engine (`analyzer/`) has no UI code, so we only rewrote the screen layer: `desktop_app.py` builds the same 8 tabs (plus a Light / Dark / System theme switch) with PySide6 (Qt), the toolkit behind many real desktop apps. PyInstaller bundles Python, the libraries, the model's training data and the app into one folder with an `.exe`, built automatically on GitHub Actions. Why desktop: bank statements are private, so the app runs fully on the user's own laptop with no upload and no internet.
 
 ---
 

@@ -34,7 +34,7 @@ jobs:
         run: |
           $p = Start-Process -FilePath "dist\UPI Spending Analyzer\UPI Spending Analyzer.exe" -ArgumentList "--selftest","selftest" -Wait -PassThru
           Get-Content selftest\result.txt
-          if (!(Test-Path selftest\tab_6.png)) { exit 1 }
+          if (!(Test-Path selftest\dark_tab_7.png)) { exit 1 }
       - name: Zip
         shell: pwsh
         run: |
@@ -72,3 +72,4 @@ jobs:
             3. Open the folder and double-click "UPI Spending Analyzer.exe"
             If Windows SmartScreen appears, click "More info" > "Run anyway" (the app is not code-signed).
             Sample statements (CSV and PDF) are inside the folder to try "Open UPI statement".
+            Choose Light, Dark or System theme from Appearance at the top of the sidebar.

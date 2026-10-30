@@ -16,7 +16,8 @@ matplotlib.use("QtAgg")
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex, QTimer, Signal, QObject
-from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter
+from PySide6.QtCore import QSettings
+from PySide6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPalette, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QFileDialog, QTabWidget, QTableView, QHeaderView, QSpinBox, QLineEdit,
@@ -25,36 +26,128 @@ from PySide6.QtWidgets import (
 )
 
 import analyzer as A
-from analyzer import insights, parser, categorizer, llm
+from analyzer import insights, parser, categorizer, llm, future_scope
 
 APP_TITLE = "AI-Based UPI Spending Analyzer"
-ACCENT = "#5b2a86"          # UPI-ish purple
 PALETTE = ["#5b2a86", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#264653",
            "#8ab17d", "#b5838d", "#6d6875", "#457b9d", "#a8dadc"]
+PALETTE_DARK = ["#a77de0", "#2ec4b6", "#e9c46a", "#f4a261", "#ef7a5c", "#5fa8d3",
+                "#9fd08f", "#d29aa6", "#a39dbb", "#7fb3e0", "#a8dadc"]
 
-STYLE = f"""
-QMainWindow, QWidget {{ background: #f6f5fa; font-family: 'Segoe UI', 'Noto Sans', sans-serif; font-size: 10pt; }}
-QLabel {{ background: transparent; }}
-QScrollArea > QWidget > QWidget {{ background: white; }}
-#Sidebar {{ background: #ffffff; border-right: 1px solid #e3e0ec; }}
-#Sidebar QLabel#H {{ font-weight: 600; color: {ACCENT}; font-size: 10.5pt; margin-top: 8px; }}
-QPushButton {{ background: {ACCENT}; color: white; border: none; border-radius: 6px; padding: 8px 12px; }}
-QPushButton:hover {{ background: #6f3aa0; }}
-QPushButton#Flat {{ background: #ece7f5; color: {ACCENT}; }}
-QSpinBox, QLineEdit, QComboBox {{ background: white; border: 1px solid #d6d1e3; border-radius: 5px; padding: 5px; }}
-#Card {{ background: white; border: 1px solid #e3e0ec; border-radius: 10px; }}
-#CardValue {{ font-size: 17pt; font-weight: 700; color: #1d1b26; }}
-#CardLabel {{ color: #6b6780; font-size: 9pt; }}
-#Title {{ font-size: 18pt; font-weight: 700; color: #1d1b26; }}
-#Sub {{ color: #6b6780; }}
-QTabWidget::pane {{ border: 1px solid #e3e0ec; border-radius: 8px; background: white; top: -1px; }}
-QTabBar::tab {{ background: transparent; padding: 8px 14px; color: #55516a; }}
-QTabBar::tab:selected {{ color: {ACCENT}; border-bottom: 3px solid {ACCENT}; font-weight: 600; }}
-QTableView {{ background: white; border: none; gridline-color: #eeeaf5; selection-background-color: #e6dcf3; selection-color: black; }}
-QHeaderView::section {{ background: #f1edf8; padding: 5px; border: none; font-weight: 600; }}
-QProgressBar {{ border: 1px solid #d6d1e3; border-radius: 5px; background: white; text-align: center; height: 18px; }}
-QProgressBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
+# ---------------------------------------------------------------- themes (Light / Dark / System)
+THEMES = {
+    "light": dict(
+        dark=False, bg="#f6f5fa", surface="#ffffff", border="#e3e0ec", text="#1d1b26", muted="#6b6780",
+        accent="#5b2a86", accent_hover="#6f3aa0", accent_text="#5b2a86", on_accent="#ffffff",
+        flat_bg="#ece7f5", flat_fg="#5b2a86", input_border="#d6d1e3", header_bg="#f1edf8",
+        grid="#eeeaf5", sel="#e6dcf3", sel_fg="#000000", tab_fg="#55516a",
+        info=("#eef4ff", "#1d3557"), warn=("#fff4e0", "#7a4b00"), good=("#eef8f1", "#1e4d2b"),
+        risk={"High": "#fde2e2", "Medium": "#fff1d6", "Low": "#eef6ff"}, risk_text="#c0392b",
+        palette=PALETTE, chart_line="#5b2a86", target_bar="#c9b6e4", normal_dot="steelblue",
+        cmap="Blues", chart_grid=0.25,
+    ),
+    "dark": dict(
+        dark=True, bg="#15131c", surface="#1f1c29", border="#332f42", text="#ece9f5", muted="#a29db5",
+        accent="#7c4dbb", accent_hover="#9163cf", accent_text="#c9b2ee", on_accent="#ffffff",
+        flat_bg="#2d2640", flat_fg="#d6c3f5", input_border="#3d3852", header_bg="#2a2537",
+        grid="#2c2838", sel="#3d2f5a", sel_fg="#ffffff", tab_fg="#b3aec6",
+        info=("#1c2a40", "#cfe0ff"), warn=("#3a2a10", "#ffd9a0"), good=("#173024", "#bfe8cc"),
+        risk={"High": "#4a1f24", "Medium": "#45361a", "Low": "#1d2a3d"}, risk_text="#ff8a80",
+        palette=PALETTE_DARK, chart_line="#b892ec", target_bar="#5e4a7d", normal_dot="#5fa8d3",
+        cmap="magma", chart_grid=0.15,
+    ),
+}
+T = dict(THEMES["light"])          # active theme, swapped by apply_theme()
+UI_FONT = "'Segoe UI', 'Noto Sans', sans-serif"
+
+
+def system_prefers_dark():
+    """True when Windows (or the OS) is set to dark mode."""
+    try:
+        scheme = QGuiApplication.styleHints().colorScheme()
+        if scheme == Qt.ColorScheme.Dark:
+            return True
+        if scheme == Qt.ColorScheme.Light:
+            return False
+    except Exception:
+        pass
+    if sys.platform == "win32":     # fallback: read the Windows setting directly
+        try:
+            import winreg
+            k = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                               r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+            return winreg.QueryValueEx(k, "AppsUseLightTheme")[0] == 0
+        except Exception:
+            pass
+    return False
+
+
+def resolve_theme(mode):
+    """mode is 'System', 'Light' or 'Dark' -> 'light' / 'dark'."""
+    if mode == "Dark":
+        return "dark"
+    if mode == "Light":
+        return "light"
+    return "dark" if system_prefers_dark() else "light"
+
+
+def build_style(t, font=None):
+    f = font or UI_FONT
+    return f"""
+QMainWindow, QWidget {{ background: {t['bg']}; color: {t['text']}; font-family: {f}; font-size: 10pt; }}
+QLabel {{ background: transparent; color: {t['text']}; }}
+QScrollArea > QWidget > QWidget {{ background: {t['surface']}; }}
+#Sidebar {{ background: {t['surface']}; border-right: 1px solid {t['border']}; }}
+#Sidebar QLabel#H {{ font-weight: 600; color: {t['accent_text']}; font-size: 10.5pt; margin-top: 8px; }}
+QPushButton {{ background: {t['accent']}; color: {t['on_accent']}; border: none; border-radius: 6px; padding: 8px 12px; }}
+QPushButton:hover {{ background: {t['accent_hover']}; }}
+QPushButton#Flat {{ background: {t['flat_bg']}; color: {t['flat_fg']}; }}
+QPushButton#Flat:hover {{ background: {t['sel']}; }}
+QSpinBox, QLineEdit, QComboBox, QTextEdit {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['input_border']}; border-radius: 5px; padding: 5px; }}
+QComboBox QAbstractItemView {{ background: {t['surface']}; color: {t['text']}; selection-background-color: {t['sel']}; selection-color: {t['sel_fg']}; }}
+#Card {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 10px; }}
+#CardValue {{ font-size: 17pt; font-weight: 700; color: {t['text']}; }}
+#CardLabel, #Muted {{ color: {t['muted']}; font-size: 9pt; }}
+#Title {{ font-size: 18pt; font-weight: 700; color: {t['text']}; }}
+#Sub {{ color: {t['muted']}; }}
+#Heading {{ font-size: 12.5pt; font-weight: 700; color: {t['text']}; margin: 4px 0; }}
+QTabWidget::pane {{ border: 1px solid {t['border']}; border-radius: 8px; background: {t['surface']}; top: -1px; }}
+QTabWidget QStackedWidget, QTabWidget QStackedWidget QWidget {{ background: {t['surface']}; }}
+QTabBar::tab {{ background: transparent; padding: 8px 14px; color: {t['tab_fg']}; }}
+QTabBar::tab:selected {{ color: {t['accent_text']}; border-bottom: 3px solid {t['accent_text']}; font-weight: 600; }}
+QTableView {{ background: {t['surface']}; color: {t['text']}; border: none; gridline-color: {t['grid']}; selection-background-color: {t['sel']}; selection-color: {t['sel_fg']}; }}
+QHeaderView::section {{ background: {t['header_bg']}; color: {t['text']}; padding: 5px; border: none; font-weight: 600; }}
+QTableCornerButton::section {{ background: {t['header_bg']}; border: none; }}
+QProgressBar {{ border: 1px solid {t['input_border']}; border-radius: 5px; background: {t['surface']}; color: {t['text']}; text-align: center; height: 18px; }}
+QProgressBar::chunk {{ background: {t['accent']}; border-radius: 4px; }}
+QStatusBar {{ background: {t['surface']}; color: {t['muted']}; border-top: 1px solid {t['border']}; }}
+QScrollBar:vertical, QScrollBar:horizontal {{ background: {t['bg']}; border: none; width: 11px; height: 11px; }}
+QScrollBar::handle {{ background: {t['input_border']}; border-radius: 5px; min-height: 24px; min-width: 24px; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QToolTip {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']}; }}
 """
+
+
+def apply_theme(app, name, font=None):
+    """Switch the whole app (Qt widgets, palette and Matplotlib charts) to 'light' or 'dark'."""
+    T.clear(); T.update(THEMES[name])
+    app.setStyle("Fusion")
+    pal = QPalette()
+    for role, key in [(QPalette.Window, "bg"), (QPalette.Base, "surface"), (QPalette.AlternateBase, "header_bg"),
+                      (QPalette.Button, "surface"), (QPalette.ToolTipBase, "surface")]:
+        pal.setColor(role, QColor(T[key]))
+    for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText, QPalette.ToolTipText):
+        pal.setColor(role, QColor(T["text"]))
+    pal.setColor(QPalette.Highlight, QColor(T["sel"])); pal.setColor(QPalette.HighlightedText, QColor(T["sel_fg"]))
+    pal.setColor(QPalette.PlaceholderText, QColor(T["muted"]))
+    app.setPalette(pal)
+    app.setStyleSheet(build_style(T, font))
+    matplotlib.rcParams.update({
+        "figure.facecolor": T["surface"], "axes.facecolor": T["surface"], "savefig.facecolor": T["surface"],
+        "text.color": T["text"], "axes.labelcolor": T["text"], "axes.titlecolor": T["text"],
+        "xtick.color": T["muted"], "ytick.color": T["muted"], "axes.edgecolor": T["muted"],
+        "grid.color": T["muted"], "legend.labelcolor": T["text"],
+    })
 
 
 def rs(x):
@@ -95,7 +188,7 @@ class DataFrameModel(QAbstractTableModel):
             return int(Qt.AlignRight | Qt.AlignVCenter)
         if role == Qt.BackgroundRole and self.risk_col is not None:
             lvl = self.df.at[index.row(), self.risk_col]
-            return QColor({"High": "#fde2e2", "Medium": "#fff1d6", "Low": "#eef6ff"}.get(lvl, "white"))
+            return QColor(T["risk"].get(lvl, T["surface"]))
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
@@ -116,38 +209,40 @@ def table(df, **kw):
 
 
 def chart(width=6, height=3.6):
-    fig = Figure(figsize=(width, height), dpi=100, facecolor="white")
+    fig = Figure(figsize=(width, height), dpi=100, facecolor=T["surface"])
     canvas = FigureCanvasQTAgg(fig)
     canvas.setMinimumHeight(int(height * 85))
     return fig, canvas
 
 
 def style_ax(ax, title):
-    ax.set_title(title, loc="left", fontsize=11, fontweight="bold", color="#1d1b26")
+    ax.set_facecolor(T["surface"])
+    ax.set_title(title, loc="left", fontsize=11, fontweight="bold", color=T["text"])
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     ax.tick_params(labelsize=8)
-    ax.grid(axis="y", alpha=0.25)
+    ax.grid(axis="y", alpha=T["chart_grid"])
 
 
-def card(label, value, sub=None, sub_color="#6b6780"):
+def card(label, value, sub=None, sub_color=None):
     f = QFrame(); f.setObjectName("Card")
     lay = QVBoxLayout(f); lay.setContentsMargins(14, 10, 14, 10); lay.setSpacing(2)
     a = QLabel(label); a.setObjectName("CardLabel")
     b = QLabel(value); b.setObjectName("CardValue")
     lay.addWidget(a); lay.addWidget(b)
     if sub:
-        c = QLabel(sub); c.setStyleSheet(f"color:{sub_color}; font-size:9pt;")
+        c = QLabel(sub); c.setStyleSheet(f"color:{sub_color or T['muted']}; font-size:9pt;")
         lay.addWidget(c)
     return f
 
 
 def heading(text):
-    l = QLabel(text); l.setStyleSheet("font-size:12.5pt; font-weight:700; color:#1d1b26; margin:4px 0;")
+    l = QLabel(text); l.setObjectName("Heading"); l.setWordWrap(True)
     return l
 
 
-def note(text, bg="#eef4ff", fg="#1d3557"):
+def note(text, kind="info"):
+    bg, fg = T[kind]
     l = QLabel(text); l.setWordWrap(True); l.setTextFormat(Qt.RichText)
     l.setStyleSheet(f"background:{bg}; color:{fg}; border-radius:8px; padding:10px;")
     return l
@@ -160,9 +255,10 @@ def scroll(widget):
 
 # ---------------------------------------------------------------- main window
 class MainWindow(QMainWindow):
-    def __init__(self, model):
+    def __init__(self, model, theme_mode="System", font=None):
         super().__init__()
         self.model = model
+        self.theme_mode, self.font_css = theme_mode, font
         self.setWindowTitle(APP_TITLE)
         self.resize(1360, 860)
         self.statement = self.load_sample()
@@ -189,10 +285,15 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(sb); v.setContentsMargins(16, 16, 16, 16); v.setSpacing(8)
         def H(t):
             l = QLabel(t); l.setObjectName("H"); v.addWidget(l)
+        H("Appearance")
+        self.theme_box = QComboBox(); self.theme_box.addItems(["System", "Light", "Dark"])
+        self.theme_box.setToolTip("System follows your Windows light/dark setting")
+        self.theme_box.setCurrentText(self.theme_mode)
+        self.theme_box.currentTextChanged.connect(self.set_theme_mode); v.addWidget(self.theme_box)
         H("1. Statement")
         b = QPushButton("📂  Open UPI statement (CSV / PDF)"); b.clicked.connect(self.open_file); v.addWidget(b)
         b2 = QPushButton("Use sample statement"); b2.setObjectName("Flat"); b2.clicked.connect(self.use_sample); v.addWidget(b2)
-        self.src_label = QLabel(); self.src_label.setWordWrap(True); self.src_label.setStyleSheet("color:#6b6780; font-size:9pt;")
+        self.src_label = QLabel(); self.src_label.setWordWrap(True); self.src_label.setObjectName("Muted")
         v.addWidget(self.src_label)
         H("2. Budget")
         v.addWidget(QLabel("Monthly income / pocket money (₹)"))
@@ -204,9 +305,9 @@ class MainWindow(QMainWindow):
         self.api_key = QLineEdit(); self.api_key.setEchoMode(QLineEdit.Password)
         self.api_key.setPlaceholderText("OpenAI-compatible key (optional)"); v.addWidget(self.api_key)
         tip = QLabel("Leave empty: everything else works fully offline."); tip.setWordWrap(True)
-        tip.setStyleSheet("color:#6b6780; font-size:9pt;"); v.addWidget(tip)
+        tip.setObjectName("Muted"); v.addWidget(tip)
         v.addStretch(1)
-        self.acc_label = QLabel(); self.acc_label.setWordWrap(True); self.acc_label.setStyleSheet("color:#6b6780; font-size:9pt;")
+        self.acc_label = QLabel(); self.acc_label.setWordWrap(True); self.acc_label.setObjectName("Muted")
         v.addWidget(self.acc_label)
         exp = QPushButton("💾  Export categorised CSV"); exp.setObjectName("Flat"); exp.clicked.connect(self.export_csv)
         v.addWidget(exp)
@@ -253,17 +354,42 @@ class MainWindow(QMainWindow):
             self.k = insights.kpis(self.df)
             self.src_label.setText(f"Now showing: {self.source_name}\n{len(self.df)} transactions")
             self.acc_label.setText(f"Model accuracy: {self.model.accuracy:.1%} on {self.model.n_test} held-out rows")
-            self.build_cards()
-            current = self.tabs.currentIndex()
-            self.tabs.clear()
-            for name, fn in [("📊 Overview", self.tab_overview), ("🧾 Transactions", self.tab_transactions),
-                             ("🤖 AI Model", self.tab_model), ("🚨 Anomalies && Fraud", self.tab_anomalies),
-                             ("🔁 Subscriptions", self.tab_recurring), ("🎯 Budget 50/30/20 && Tips", self.tab_budget),
-                             ("📚 FLB Concepts", self.tab_flb)]:
-                self.tabs.addTab(fn(), name)
-            self.tabs.setCurrentIndex(max(current, 0))
+            self.rebuild_views()
         finally:
             QApplication.restoreOverrideCursor()
+
+    def rebuild_views(self):
+        """Redraw cards, tables and charts (after new data or a theme change)."""
+        self.build_cards()
+        current = self.tabs.currentIndex()
+        self.tabs.clear()
+        for name, fn in [("📊 Overview", self.tab_overview), ("🧾 Transactions", self.tab_transactions),
+                         ("🤖 AI Model", self.tab_model), ("🚨 Anomalies && Fraud", self.tab_anomalies),
+                         ("🔁 Subscriptions", self.tab_recurring), ("🎯 Budget 50/30/20 && Tips", self.tab_budget),
+                         ("📚 FLB Concepts", self.tab_flb), ("🚀 Future Scope", self.tab_future)]:
+            self.tabs.addTab(fn(), name)
+        self.tabs.setCurrentIndex(max(current, 0))
+
+    # ------------------------------------------------ theme
+    def set_theme_mode(self, mode):
+        """Called by the Appearance box: 'System', 'Light' or 'Dark'."""
+        self.theme_mode = mode
+        QSettings("UPI Spending Analyzer", "Desktop").setValue("theme", mode)
+        self.apply_current_theme()
+
+    def apply_current_theme(self):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            apply_theme(QApplication.instance(), resolve_theme(self.theme_mode), self.font_css)
+            self.rebuild_views()
+            self.statusBar().showMessage(f"Theme: {self.theme_mode}"
+                                         + (f" ({'dark' if T['dark'] else 'light'})" if self.theme_mode == "System" else ""), 4000)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def on_system_scheme_changed(self, *_):
+        if self.theme_mode == "System":
+            self.apply_current_theme()
 
     def build_cards(self):
         while self.cards_row.count():
@@ -274,7 +400,7 @@ class MainWindow(QMainWindow):
         high = int((fl["risk_level"] == "High").sum()) if len(fl) else 0
         for c in [card("Total spent", rs(k["total_spent"])), card("Money received", rs(k["total_received"])),
                   card("Avg spend / month", rs(k["avg_monthly_spend"])), card("Transactions", str(k["transactions"])),
-                  card("Unusual payments", str(len(fl)), f"{high} high risk", "#c0392b" if high else "#6b6780")]:
+                  card("Unusual payments", str(len(fl)), f"{high} high risk", T["risk_text"] if high else None)]:
             self.cards_row.addWidget(c)
 
     # ------------------------------------------------ tabs
@@ -287,7 +413,7 @@ class MainWindow(QMainWindow):
         labels = [pd.Period(x).strftime("%b %Y") for x in m.index]
         bottom = np.zeros(len(m))
         for i, col in enumerate(m.columns):
-            ax.bar(labels, m[col].values, bottom=bottom, label=col, color=PALETTE[i % len(PALETTE)], width=0.55)
+            ax.bar(labels, m[col].values, bottom=bottom, label=col, color=T["palette"][i % len(T["palette"])], width=0.55)
             bottom += m[col].values
         style_ax(ax, "Monthly spending by category"); ax.yaxis.set_major_formatter(rs_k)
         ax.legend(fontsize=7, frameon=False, bbox_to_anchor=(1.0, 1), loc="upper left"); fig.tight_layout()
@@ -295,11 +421,11 @@ class MainWindow(QMainWindow):
         # donut
         ct = insights.category_totals(df)
         fig2, cv2 = chart(5, 4.0); ax2 = fig2.add_subplot(111)
-        ax2.pie(ct.values, labels=None, colors=PALETTE[:len(ct)], startangle=90, counterclock=False,
-                wedgeprops=dict(width=0.42, edgecolor="white"), autopct=lambda p: f"{p:.0f}%" if p > 5 else "",
+        ax2.pie(ct.values, labels=None, colors=T["palette"][:len(ct)], startangle=90, counterclock=False,
+                wedgeprops=dict(width=0.42, edgecolor=T["surface"]), autopct=lambda p: f"{p:.0f}%" if p > 5 else "",
                 pctdistance=0.79, textprops=dict(fontsize=8, color="white", fontweight="bold"))
         ax2.legend(ct.index, fontsize=7, frameon=False, bbox_to_anchor=(0.5, -0.02), loc="upper center", ncol=3)
-        ax2.set_title("Where the money went", loc="left", fontsize=11, fontweight="bold"); fig2.tight_layout()
+        ax2.set_title("Where the money went", loc="left", fontsize=11, fontweight="bold", color=T["text"]); fig2.tight_layout()
         g.addWidget(cv2, 0, 1)
         # top merchants
         box = QWidget(); bl = QVBoxLayout(box); bl.setContentsMargins(0, 0, 0, 0)
@@ -309,8 +435,8 @@ class MainWindow(QMainWindow):
         # weekly trend
         daily = df[df["type"] == "DEBIT"].set_index("datetime")["amount"].resample("W").sum()
         fig3, cv3 = chart(6, 3.2); ax3 = fig3.add_subplot(111)
-        ax3.plot(daily.index, daily.values, marker="o", color=ACCENT, lw=2)
-        ax3.fill_between(daily.index, daily.values, alpha=0.08, color=ACCENT)
+        ax3.plot(daily.index, daily.values, marker="o", color=T["chart_line"], lw=2)
+        ax3.fill_between(daily.index, daily.values, alpha=0.12, color=T["chart_line"])
         style_ax(ax3, "Weekly spending trend"); ax3.yaxis.set_major_formatter(rs_k)
         fig3.autofmt_xdate(); fig3.tight_layout()
         g.addWidget(cv3, 1, 1)
@@ -351,14 +477,14 @@ class MainWindow(QMainWindow):
         mid = QHBoxLayout()
         fig, cv = chart(6, 4.6); ax = fig.add_subplot(111)
         cm = np.array(md.confusion)
-        ax.imshow(cm, cmap="Blues")
+        ax.imshow(cm, cmap=T["cmap"])
         ax.set_xticks(range(len(md.labels))); ax.set_yticks(range(len(md.labels)))
         ax.set_xticklabels(md.labels, rotation=45, ha="right", fontsize=7); ax.set_yticklabels(md.labels, fontsize=7)
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
                 if cm[i, j]:
                     ax.text(j, i, cm[i, j], ha="center", va="center", fontsize=7,
-                            color="white" if cm[i, j] > cm.max() / 2 else "black")
+                            color=("black" if cm[i, j] > cm.max() / 2 else "white") if T["dark"] else ("white" if cm[i, j] > cm.max() / 2 else "black"))
         ax.set_xlabel("Predicted", fontsize=8); ax.set_ylabel("Actual", fontsize=8)
         ax.set_title("Confusion matrix (test set)", loc="left", fontsize=11, fontweight="bold"); fig.tight_layout()
         mid.addWidget(cv, 1)
@@ -391,7 +517,7 @@ class MainWindow(QMainWindow):
         v.addWidget(QLabel("Duplicate check · z-score on amount · late-night high value · scam words in payee · Isolation Forest"))
         fl = self.flagged
         if fl.empty:
-            v.addWidget(note("Nothing unusual found.", "#e7f6ec", "#1e6b3a"))
+            v.addWidget(note("Nothing unusual found.", "good"))
         else:
             t = table(fl[["risk_level", "datetime", "merchant", "amount", "category", "reasons"]],
                       money_cols=["amount"], risk_col="risk_level")
@@ -400,14 +526,14 @@ class MainWindow(QMainWindow):
             deb["flag"] = deb.index.isin(fl.index)
             hour = deb["datetime"].dt.hour + deb["datetime"].dt.minute / 60
             fig, cv = chart(9, 3.6); ax = fig.add_subplot(111)
-            ax.scatter(hour[~deb["flag"]], deb.loc[~deb["flag"], "amount"], s=18, c="steelblue", alpha=0.6, label="normal")
-            ax.scatter(hour[deb["flag"]], deb.loc[deb["flag"], "amount"], s=46, c="crimson", label="flagged", edgecolor="white")
+            ax.scatter(hour[~deb["flag"]], deb.loc[~deb["flag"], "amount"], s=18, c=T["normal_dot"], alpha=0.6, label="normal")
+            ax.scatter(hour[deb["flag"]], deb.loc[deb["flag"], "amount"], s=46, c="crimson", label="flagged", edgecolor=T["surface"])
             ax.set_yscale("log"); ax.set_xlim(0, 24); ax.set_xlabel("Hour of day", fontsize=8); ax.set_ylabel("₹ (log scale)", fontsize=8)
             style_ax(ax, "Amount vs time of day (red = flagged)"); ax.legend(fontsize=8, frameon=False); fig.tight_layout()
             v.addWidget(cv)
         v.addWidget(note("<b>UPI safety (RBI / NPCI advice):</b> you never need your UPI PIN to <i>receive</i> money; don't approve "
                          "unknown 'collect' requests; no bank asks for KYC updates over UPI; report fraud at 1930 or "
-                         "cybercrime.gov.in.", "#fff4e0", "#7a4b00"))
+                         "cybercrime.gov.in.", "warn"))
         return scroll(w)
 
     def tab_recurring(self):
@@ -431,9 +557,9 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         fig, cv = chart(6, 3.4); ax = fig.add_subplot(111)
         x = np.arange(len(b))
-        ax.bar(x - 0.2, b["target"], 0.4, label="target", color="#c9b6e4")
-        ax.bar(x + 0.2, b["actual"], 0.4, label="actual", color=ACCENT)
-        ax.set_xticks(x); ax.set_xticklabels(b["bucket"]); ax.axhline(0, color="#999", lw=0.8)
+        ax.bar(x - 0.2, b["target"], 0.4, label="target", color=T["target_bar"])
+        ax.bar(x + 0.2, b["actual"], 0.4, label="actual", color=T["chart_line"])
+        ax.set_xticks(x); ax.set_xticklabels(b["bucket"]); ax.axhline(0, color=T["muted"], lw=0.8)
         ax.yaxis.set_major_formatter(rs_k)
         style_ax(ax, "Target vs your average month"); ax.legend(fontsize=8, frameon=False); fig.tight_layout()
         row.addWidget(cv, 3)
@@ -442,11 +568,11 @@ class MainWindow(QMainWindow):
         rl.addWidget(table(bd, money_cols=["target", "actual"]))
         c = QLabel("Needs: groceries, travel, bills, recharge, education, health.\n"
                    "Wants: eating out, shopping, entertainment, transfers to friends.")
-        c.setWordWrap(True); c.setStyleSheet("color:#6b6780; font-size:9pt;"); rl.addWidget(c)
+        c.setWordWrap(True); c.setObjectName("Muted"); rl.addWidget(c)
         row.addWidget(right, 2)
         v.addLayout(row)
         v.addWidget(heading("Saving tips for you"))
-        v.addWidget(note("<br>".join(f"• {t.replace('Rs ', '₹')}" for t in self.tips), "#eef8f1", "#1e4d2b"))
+        v.addWidget(note("<br>".join(f"• {t.replace('Rs ', '₹')}" for t in self.tips), "good"))
         ai_btn = QPushButton("✨  Ask the AI coach for a summary (needs API key)")
         out = QTextEdit(); out.setReadOnly(True); out.setVisible(False); out.setMinimumHeight(160)
 
@@ -491,9 +617,29 @@ class MainWindow(QMainWindow):
         return w
 
 
+    def tab_future(self):
+        w = QWidget(); v = QVBoxLayout(w)
+        v.addWidget(heading("Future scope: where this project can go next"))
+        v.addWidget(note(future_scope.IMPACT, "info"))
+        v.addWidget(heading("Current limitations (what we would fix)"))
+        v.addWidget(note("<br>".join(f"• <b>{a}:</b> {b}" for a, b in future_scope.LIMITATIONS), "warn"))
+        v.addWidget(heading("Roadmap"))
+        rm = pd.DataFrame(future_scope.ROADMAP, columns=["Phase", "Feature", "What it adds", "How (technology)", "FLB concept"])
+        t = table(rm)
+        t.setWordWrap(True)
+        t.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        for col, width in enumerate([150, 220, 420, 280]):
+            t.setColumnWidth(col, width)
+        t.resizeRowsToContents()
+        t.setMinimumHeight(min(60 + sum(t.rowHeight(r) for r in range(len(rm))), 900))
+        v.addWidget(t)
+        v.addStretch(1)
+        return scroll(w)
+
+
 # ---------------------------------------------------------------- startup
 def make_splash():
-    pm = QPixmap(520, 220); pm.fill(QColor(ACCENT))
+    pm = QPixmap(520, 220); pm.fill(QColor("#5b2a86"))
     p = QPainter(pm); p.setPen(Qt.white)
     f = QFont(); f.setPointSize(18); f.setBold(True); p.setFont(f)
     p.drawText(pm.rect().adjusted(0, -30, 0, 0), Qt.AlignCenter, "💸 UPI Spending Analyzer")
@@ -504,22 +650,30 @@ def make_splash():
 
 
 def self_test(out_dir):
-    """Used by the Windows build check: open the app, screenshot every tab, read the PDF sample, exit."""
+    """Used by the Windows build check: open the app, screenshot every tab in light and dark, read the PDF, exit."""
     app = QApplication(sys.argv)
     # The headless 'offscreen' platform has no system fonts, so load Matplotlib's bundled DejaVu Sans
     from PySide6.QtGui import QFontDatabase
     for name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"):
         QFontDatabase.addApplicationFont(str(Path(matplotlib.get_data_path()) / "fonts" / "ttf" / name))
     app.setFont(QFont("DejaVu Sans", 9))
-    app.setStyleSheet(STYLE.replace("'Segoe UI', 'Noto Sans', sans-serif", "'DejaVu Sans'"))
+    font = "'DejaVu Sans'"
+    apply_theme(app, "light", font)
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-    win = MainWindow(A.load_model()); win.resize(1400, 880); win.show(); app.processEvents()
+    win = MainWindow(A.load_model(), "Light", font); win.resize(1400, 880); win.show(); app.processEvents()
     for i in range(win.tabs.count()):
         win.tabs.setCurrentIndex(i); app.processEvents()
         win.grab().save(str(out / f"tab_{i}.png"))
+    win.theme_box.setCurrentText("Dark"); app.processEvents()      # same path as the user picking Dark
+    for i in range(win.tabs.count()):
+        win.tabs.setCurrentIndex(i); app.processEvents()
+        win.grab().save(str(out / f"dark_tab_{i}.png"))
+    win.theme_box.setCurrentText("System"); app.processEvents()
+    win.theme_box.setCurrentText("Light"); app.processEvents()
     win.statement = parser.load_statement(str(A.DATA / "sample_upi_statement.pdf"), "sample.pdf"); win.refresh()
     msg = (f"OK: {len(win.df)} transactions from PDF, {len(win.flagged)} flagged, "
-           f"{len(win.recurring)} recurring, accuracy {win.model.accuracy:.3f}")
+           f"{len(win.recurring)} recurring, accuracy {win.model.accuracy:.3f}, {win.tabs.count()} tabs, "
+           f"themes light/dark/system OK")
     (out / "result.txt").write_text(msg, encoding="utf-8")
     print(msg)
 
@@ -529,10 +683,17 @@ def main():
         return self_test(sys.argv[2])
     app = QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
-    app.setStyleSheet(STYLE)
+    mode = QSettings("UPI Spending Analyzer", "Desktop").value("theme", "System")
+    if mode not in ("System", "Light", "Dark"):
+        mode = "System"
+    apply_theme(app, resolve_theme(mode))
     splash = make_splash(); splash.show(); app.processEvents()
     model = A.load_model()
-    win = MainWindow(model)
+    win = MainWindow(model, mode)
+    try:   # follow Windows when the user flips light/dark while the app is open
+        app.styleHints().colorSchemeChanged.connect(win.on_system_scheme_changed)
+    except Exception:
+        pass
     win.show(); splash.finish(win)
     sys.exit(app.exec())
 
