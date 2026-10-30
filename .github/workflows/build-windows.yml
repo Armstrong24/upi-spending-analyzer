@@ -1,0 +1,61 @@
+name: Build Windows desktop app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-desktop.txt pyinstaller
+      - name: Build exe
+        run: >
+          pyinstaller desktop_app.py --noconfirm --windowed --name "UPI Spending Analyzer"
+          --add-data "data;data" --collect-submodules sklearn
+          --exclude-module streamlit --exclude-module plotly --exclude-module tkinter
+      - name: Self-test the built exe (screenshots of every tab)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\UPI Spending Analyzer\UPI Spending Analyzer.exe" -ArgumentList "--selftest","selftest" -Wait -PassThru
+          Get-Content selftest\result.txt
+          if (!(Test-Path selftest\tab_6.png)) { exit 1 }
+      - name: Zip
+        shell: pwsh
+        run: |
+          Copy-Item data\sample_upi_statement.csv, data\sample_upi_statement.pdf "dist\UPI Spending Analyzer\"
+          Compress-Archive -Path "dist\UPI Spending Analyzer" -DestinationPath "UPI-Spending-Analyzer-Windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selftest-screenshots
+          path: selftest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UPI-Spending-Analyzer-Windows
+          path: UPI-Spending-Analyzer-Windows.zip
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: UPI-Spending-Analyzer-Windows.zip
+          name: "UPI Spending Analyzer for Windows ${{ github.ref_name }}"
+          body: |
+            Windows desktop app. No Python needed.
+            1. Download UPI-Spending-Analyzer-Windows.zip
+            2. Right-click > Extract All
+            3. Open the folder and double-click "UPI Spending Analyzer.exe"
+            If Windows SmartScreen appears, click "More info" > "Run anyway" (the app is not code-signed).
+            Sample statements (CSV and PDF) are inside the folder to try "Open UPI statement".
