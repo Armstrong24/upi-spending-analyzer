@@ -34,6 +34,8 @@ PALETTE = ["#5b2a86", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#264653",
 
 STYLE = f"""
 QMainWindow, QWidget {{ background: #f6f5fa; font-family: 'Segoe UI', 'Noto Sans', sans-serif; font-size: 10pt; }}
+QLabel {{ background: transparent; }}
+QScrollArea > QWidget > QWidget {{ background: white; }}
 #Sidebar {{ background: #ffffff; border-right: 1px solid #e3e0ec; }}
 #Sidebar QLabel#H {{ font-weight: 600; color: {ACCENT}; font-size: 10.5pt; margin-top: 8px; }}
 QPushButton {{ background: {ACCENT}; color: white; border: none; border-radius: 6px; padding: 8px 12px; }}
@@ -497,7 +499,13 @@ def make_splash():
 
 def self_test(out_dir):
     """Used by the Windows build check: open the app, screenshot every tab, read the PDF sample, exit."""
-    app = QApplication(sys.argv); app.setStyleSheet(STYLE)
+    app = QApplication(sys.argv)
+    # The headless 'offscreen' platform has no system fonts, so load Matplotlib's bundled DejaVu Sans
+    from PySide6.QtGui import QFontDatabase
+    for name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"):
+        QFontDatabase.addApplicationFont(str(Path(matplotlib.get_data_path()) / "fonts" / "ttf" / name))
+    app.setFont(QFont("DejaVu Sans", 9))
+    app.setStyleSheet(STYLE.replace("'Segoe UI', 'Noto Sans', sans-serif", "'DejaVu Sans'"))
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     win = MainWindow(A.load_model()); win.resize(1400, 880); win.show(); app.processEvents()
     for i in range(win.tabs.count()):
