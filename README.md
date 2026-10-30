@@ -8,6 +8,16 @@ SY B.Tech AI & DS, Vishwakarma University, Pune
 **Live demo:** https://upi-spending-analyzer-4frr9h7ggyhzpfegfarlup.streamlit.app/  
 (Hosted free on Streamlit Community Cloud. If it says the app is asleep, click *Yes, get this app back up!* and wait about a minute.)
 
+### 🖥️ Windows desktop app (no Python needed)
+
+1. Go to **[Releases](https://github.com/Armstrong24/upi-spending-analyzer/releases/latest)** and download `UPI-Spending-Analyzer-Windows.zip`.
+2. Right-click the zip → **Extract All**.
+3. Open the folder and double-click **`UPI Spending Analyzer.exe`**.
+4. If Windows SmartScreen shows "Windows protected your PC", click **More info → Run anyway** (the app is free and not code-signed).
+
+It opens in its own window, runs fully offline, and the folder includes sample CSV and PDF statements to try **Open UPI statement**.
+Developers can run it from source with `run_desktop.bat` or `python desktop_app.py` (needs `pip install -r requirements-desktop.txt`).
+
 Upload a UPI statement (PhonePe / Google Pay / Paytm / bank, CSV or PDF). The app:
 
 1. **Categorises every payment with machine learning** (TF-IDF + Logistic Regression), with keyword rules as a fallback.
@@ -62,7 +72,11 @@ python -m analyzer.data_generator
 
 ```
 upi-spending-analyzer/
-├── app.py                    # Streamlit UI (7 tabs)
+├── app.py                    # Streamlit web UI (7 tabs)
+├── desktop_app.py            # Windows desktop UI (PySide6 / Qt, same 7 tabs, same engine)
+├── run_desktop.bat           # run the desktop app from source on Windows
+├── requirements-desktop.txt
+├── .github/workflows/build-windows.yml  # builds the .exe on GitHub and publishes it
 ├── analyzer/
 │   ├── merchants.py          # merchant lists, keyword rules, scam words, needs/wants
 │   ├── data_generator.py     # builds training data + sample statement (CSV + PDF)
@@ -224,7 +238,10 @@ CSV exports with common column names work. PDF layouts differ between apps and b
 Synthetic training data, a fixed set of 10 categories, and PDF formats vary. Future: train on real labelled data, let users correct categories (active learning), fetch statements through the RBI Account Aggregator framework, monthly budget alerts, and a mobile app.
 
 **Q15. Which libraries did you use?**
-Python, Streamlit (UI), pandas (data), scikit-learn (TF-IDF, Logistic Regression, Isolation Forest), Plotly (charts), pdfplumber (PDF reading), fpdf2 (making the sample PDF), pytest (tests).
+Python, Streamlit (UI), pandas (data), scikit-learn (TF-IDF, Logistic Regression, Isolation Forest), Plotly (charts), pdfplumber (PDF reading), fpdf2 (making the sample PDF), pytest (tests). The desktop version uses PySide6 (Qt) for the window and Matplotlib for charts, packaged into a Windows .exe with PyInstaller.
+
+**Q16. How did you make it a desktop app, and why?**
+The AI engine (`analyzer/`) has no UI code, so we only rewrote the screen layer: `desktop_app.py` builds the same 7 tabs with PySide6 (Qt), the toolkit behind many real desktop apps. PyInstaller bundles Python, the libraries, the model's training data and the app into one folder with an `.exe`, built automatically on GitHub Actions. Why desktop: bank statements are private, so the app runs fully on the user's own laptop with no upload and no internet.
 
 ---
 
