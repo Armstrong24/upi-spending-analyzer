@@ -1,0 +1,1 @@
+OK: 196 transactions from PDF, 5 flagged, 6 recurring, accuracy 0.998
